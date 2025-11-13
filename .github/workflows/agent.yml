@@ -1,0 +1,31 @@
+name: IAFUSION Agent
+on:
+  issue_comment: { types: [created] }
+  workflow_dispatch: {}
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+jobs:
+  agent:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.comment.body, '/agent')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Exécuter l’agent (patch de fichiers)
+        env: { GITHUB_EVENT_PATH: ${{ github.event_path }} }
+        run: |
+          python - <<'PY'
+          import os,re,json,pathlib
+          p=os.environ.get("GITHUB_EVENT_PATH","")
+          d=json.load(open(p)) if p and os.path.exists(p) else {}
+          body=(d.get("comment",{}) or {}).get("body","")
+          blocks=re.findall(r"```path=([^\n]+)\n([\s\S]*?)```", body, re.M)
+          if (not str(body).startswith("/agent")) or not blocks: raise SystemExit(0)
+          for path,content in blocks:
+              f=pathlib.Path(path.strip()); f.parent.mkdir(parents=True,exist_ok=True)
+              f.write_text(content,encoding="utf-8"); print("Écrit :",f)
+          PY
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with: { commit_message: "agent: appliquer /agent files" }
